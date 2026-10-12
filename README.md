@@ -62,10 +62,11 @@ make node      # ./loft-node
 make client    # dist/clients/go/loft
 make macos     # dist/clients/macOS/loft.app
 make macos-dmg # dist/clients/macOS/loft-*-macos-<arch>.dmg
+make macos-dmgs # both arm64 and x86_64 DMGs (CI)
 make dist      # node tarballs/.deb + CLI archives
 ```
 
-Tag `vX.Y.Z` (must match `VERSION`) runs GitHub Actions: tests, `make dist`, macOS DMG (ad-hoc), and a Release. Manual: Actions → Dist.
+Tag `vX.Y.Z` (must match `VERSION`) runs GitHub Actions: tests, `make dist`, macOS DMGs arm64 and x86_64 (ad-hoc), and a Release. Manual: Actions → Dist.
 
 ```bash
 export LOFT_TOKEN='change-me-long-random'

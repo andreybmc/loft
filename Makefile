@@ -9,7 +9,7 @@ ARCH ?= amd64
 CLIENT_OSARCH := linux-amd64 linux-arm64 darwin-amd64 darwin-arm64
 CLIENT_CMDS := loft loft-front loft-probe loft-bench
 
-.PHONY: test node client front probe bench macos macos-dmg dist dist-node dist-clients \
+.PHONY: test node client front probe bench macos macos-dmg macos-dmgs dist dist-node dist-clients \
 	dist-clean-node dist-clean-legacy dist-debian dist-debian-amd64 dist-debian-arm64 \
 	dist-one dist-deb dist-deb-amd64 dist-deb-arm64 deb
 
@@ -37,13 +37,22 @@ bench:
 	go build -ldflags "$(LDFLAGS)" -o $(CLIENTS)/go/loft-bench ./clients/go/cmd/loft-bench
 
 # BUMP is forwarded so `make macos-dmg BUMP=0` works on GNU and BSD make (CI).
+# Root ARCH defaults to debian amd64; only pass it through when it is a macOS slice.
+MAC_ARCH :=
+ifneq ($(filter $(ARCH),arm64 x86_64),)
+MAC_ARCH := ARCH=$(ARCH)
+endif
+
 macos:
-	$(MAKE) -C clients/macOS app BUMP=$(BUMP)
+	$(MAKE) -C clients/macOS app BUMP=$(BUMP) $(MAC_ARCH)
 
 macos-dmg:
-	$(MAKE) -C clients/macOS dmg BUMP=$(BUMP)
+	$(MAKE) -C clients/macOS dmg BUMP=$(BUMP) $(MAC_ARCH)
 
-# Server packages + CLI archives. macOS .app/.dmg is make macos-dmg (needs Xcode).
+macos-dmgs:
+	$(MAKE) -C clients/macOS dmgs BUMP=$(BUMP)
+
+# Server packages + CLI archives. macOS .app/.dmg is make macos-dmg / macos-dmgs (needs Xcode).
 dist: dist-node dist-clients
 
 dist-node: dist-clean-legacy dist-debian dist-deb

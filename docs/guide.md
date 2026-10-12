@@ -19,6 +19,7 @@ make client    # dist/clients/go/loft
 make probe     # dist/clients/go/loft-probe
 make macos     # dist/clients/macOS/loft.app
 make macos-dmg # dist/clients/macOS/loft-*-macos-<arch>.dmg  (Applications symlink)
+make macos-dmgs # both arm64 and x86_64 DMGs (CI)
 make dist      # node tarballs/.deb + CLI archives
 ```
 
@@ -340,8 +341,8 @@ A tag `vX.Y.Z` must match the root `VERSION` file. That tag builds:
 
 - node tarballs and `.deb` (linux amd64, arm64)
 - CLI archives (`loft`, `loft-front`, `loft-probe`, `loft-bench` for linux/darwin, amd64/arm64)
-- macOS DMG, ad-hoc signed, named `loft-*-macos-<arch>.dmg` (`BUMP=0` so CI does not rewrite `clients/macOS/VERSION`)
+- macOS DMGs, ad-hoc signed: `loft-*-macos-arm64.dmg` and `loft-*-macos-x86_64.dmg` (`BUMP=0` so CI does not rewrite `clients/macOS/VERSION`). The runner is Apple Silicon; Intel is a Swift/Go cross-compile (`ARCH=x86_64`).
 
-and publishes a GitHub Release. Re-running the workflow on the same tag replaces the files. Without a tag, Actions → Dist → Run workflow only uploads artifacts. The macOS runner is arm64; an Intel DMG is `make macos-dmg BUMP=0` on an x86_64 Mac.
+and publishes a GitHub Release. Re-running the workflow on the same tag replaces the files. Without a tag, Actions → Dist → Run workflow only uploads artifacts.
 
 Local packages: `make dist`. Local DMG without bumping the macOS marketing version: `make macos-dmg BUMP=0`. Developer ID and notarization stay on a Mac with a keychain; they are not in Actions.

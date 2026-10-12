@@ -62,10 +62,11 @@ make node      # ./loft-node
 make client    # dist/clients/go/loft
 make macos     # dist/clients/macOS/loft.app
 make macos-dmg # dist/clients/macOS/loft-*-macos-<arch>.dmg
+make macos-dmgs # оба DMG, arm64 и x86_64 (CI)
 make dist      # tarball/.deb ноды + архивы CLI
 ```
 
-Тег `vX.Y.Z` (должен совпасть с `VERSION`) гоняет GitHub Actions: тесты, `make dist`, macOS DMG (ad-hoc) и Release. Вручную: Actions → Dist.
+Тег `vX.Y.Z` (должен совпасть с `VERSION`) гоняет GitHub Actions: тесты, `make dist`, macOS DMG arm64 и x86_64 (ad-hoc) и Release. Вручную: Actions → Dist.
 
 ```bash
 export LOFT_TOKEN='change-me-long-random'

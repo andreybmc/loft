@@ -1,19 +1,26 @@
 # 10.13 is the floor. Go cannot ship in-process (Go 1.20 was last for 10.13).
 export MACOSX_DEPLOYMENT_TARGET := 10.13
 MIN := 10.13
-ARCH ?= $(shell uname -m)
+HOSTARCH := $(shell uname -m)
+ARCH ?= $(HOSTARCH)
+ifeq ($(filter $(ARCH),arm64 x86_64),)
+$(error ARCH must be arm64 or x86_64 (got $(ARCH)))
+endif
 ifeq ($(ARCH),x86_64)
 TRIPLE := x86_64-apple-macosx$(MIN)
+GOARCH_FRONT := amd64
 else
 TRIPLE := arm64-apple-macosx$(MIN)
+GOARCH_FRONT := arm64
 endif
 
 SDK := $(shell xcrun --sdk macosx --show-sdk-path)
 SWIFTC := xcrun swiftc
 CLANG := xcrun clang
 ROOT := $(abspath ../..)
-# Intermediates only (.o, test_aead). The .app lives in dist/clients/macOS/.
-OBJ := build
+# Intermediates per slice (.o, test_aead). The .app lives in dist/clients/macOS/.
+OBJ := build/$(ARCH)
+HOSTOBJ := build/$(HOSTARCH)
 APP := $(ROOT)/dist/clients/macOS/loft.app
 MACOS := $(APP)/Contents/MacOS
 RES := $(APP)/Contents/Resources
@@ -26,8 +33,9 @@ BUMP ?= 1
 
 SWIFT_SRC := $(wildcard Sources/Engine/*.swift Sources/App/*.swift)
 C_OBJ := $(OBJ)/chacha.o $(OBJ)/utun.o $(OBJ)/stack.o
+CARCH := -arch $(ARCH) -mmacosx-version-min=$(MIN) -O2 -isysroot $(SDK)
 
-.PHONY: all app dmg run clean test-crypto shot front-probe
+.PHONY: all app dmg dmgs run clean test-crypto shot front-probe
 
 all: app
 
@@ -43,44 +51,65 @@ app: test-crypto $(APP)/Contents/MacOS/loft
 	fi; \
 	sed "s/__LOFT_VERSION__/$$v/g" Info.plist > $(APP)/Contents/Info.plist; \
 	sh pack/sign.sh $(APP); \
-	echo "built $(APP)  $$v  (macOS $(MIN)+)"
+	echo "built $(APP)  $$v  (macOS $(MIN)+ $(ARCH))"
 
 # Disk image: loft.app + Applications symlink + README.txt.
 # CODESIGN_IDENTITY / NOTARY_PROFILE as for `app`.
 dmg: app
-	sh pack/make-dmg.sh
+	ARCH=$(ARCH) sh pack/make-dmg.sh
 
-test-crypto: $(OBJ)/chacha.o
-	mkdir -p $(OBJ)
-	$(CLANG) tests/test_aead.c $(OBJ)/chacha.o -o $(OBJ)/test_aead \
-		-mmacosx-version-min=$(MIN) -O2 -isysroot $(SDK) -I Sources/Crypto
-	./$(OBJ)/test_aead
+# Both slices. First build may bump VERSION; the second keeps it.
+# Apple Silicon runner: native arm64 + Rosetta-free Go/Swift x86_64 cross.
+# Intel Mac: native x86_64 + arm64 cross. AEAD test always runs as HOSTARCH.
+dmgs:
+	$(MAKE) dmg ARCH=arm64 BUMP=$(BUMP)
+	rm -rf $(APP)
+	$(MAKE) dmg ARCH=x86_64 BUMP=0
+
+# RFC 8439 on the host slice so a cross `ARCH=` still runs the test.
+test-crypto: $(HOSTOBJ)/chacha.o
+	mkdir -p $(HOSTOBJ)
+	$(CLANG) tests/test_aead.c $(HOSTOBJ)/chacha.o -o $(HOSTOBJ)/test_aead \
+		-arch $(HOSTARCH) -mmacosx-version-min=$(MIN) -O2 -isysroot $(SDK) -I Sources/Crypto
+	./$(HOSTOBJ)/test_aead
+
+ifneq ($(ARCH),$(HOSTARCH))
+$(HOSTOBJ)/chacha.o: Sources/Crypto/chacha20poly1305.c Sources/Crypto/chacha20poly1305.h
+	mkdir -p $(HOSTOBJ)
+	$(CLANG) -c Sources/Crypto/chacha20poly1305.c -o $@ \
+		-arch $(HOSTARCH) -mmacosx-version-min=$(MIN) -O2 -isysroot $(SDK)
+endif
 
 $(OBJ)/chacha.o: Sources/Crypto/chacha20poly1305.c Sources/Crypto/chacha20poly1305.h
 	mkdir -p $(OBJ)
-	$(CLANG) -c Sources/Crypto/chacha20poly1305.c -o $(OBJ)/chacha.o -mmacosx-version-min=$(MIN) -O2 -isysroot $(SDK)
+	$(CLANG) -c Sources/Crypto/chacha20poly1305.c -o $@ $(CARCH)
 
 $(OBJ)/utun.o: Sources/TUN/utun.c Sources/TUN/utun.h
 	mkdir -p $(OBJ)
-	$(CLANG) -c Sources/TUN/utun.c -o $(OBJ)/utun.o -mmacosx-version-min=$(MIN) -O2 -isysroot $(SDK)
+	$(CLANG) -c Sources/TUN/utun.c -o $@ $(CARCH)
 
 $(OBJ)/stack.o: Sources/TUN/stack.c Sources/TUN/stack.h
 	mkdir -p $(OBJ)
-	$(CLANG) -c Sources/TUN/stack.c -o $(OBJ)/stack.o -mmacosx-version-min=$(MIN) -O2 -isysroot $(SDK)
+	$(CLANG) -c Sources/TUN/stack.c -o $@ $(CARCH)
 
-$(MACOS)/loft-priv: Sources/TUN/loft-priv.c $(OBJ)/utun.o
+$(OBJ)/target-arch:
+	mkdir -p $(OBJ)
+	echo $(ARCH) > $@
+
+$(MACOS)/loft-priv: $(OBJ)/target-arch Sources/TUN/loft-priv.c $(OBJ)/utun.o
 	mkdir -p $(MACOS)
 	$(CLANG) Sources/TUN/loft-priv.c $(OBJ)/utun.o -o $(MACOS)/loft-priv \
-		-mmacosx-version-min=$(MIN) -O2 -isysroot $(SDK) -I Sources/TUN
+		$(CARCH) -I Sources/TUN
 
 FRONT_GO := $(shell find $(ROOT)/clients/go $(ROOT)/internal -name '*.go' 2>/dev/null)
 
-$(MACOS)/loft-front: $(ROOT)/go.mod $(FRONT_GO)
+$(MACOS)/loft-front: $(OBJ)/target-arch $(ROOT)/go.mod $(FRONT_GO)
 	mkdir -p $(MACOS)
-	cd $(ROOT) && go build -trimpath -ldflags="-s -w -X loft/internal/version.Version=$(ROOTVER)" \
+	cd $(ROOT) && CGO_ENABLED=0 GOOS=darwin GOARCH=$(GOARCH_FRONT) go build -trimpath \
+		-ldflags="-s -w -X loft/internal/version.Version=$(ROOTVER)" \
 		-o dist/clients/macOS/loft.app/Contents/MacOS/loft-front ./clients/go/cmd/loft-front
 
-$(APP)/Contents/MacOS/loft: $(SWIFT_SRC) $(C_OBJ) $(MACOS)/loft-priv $(MACOS)/loft-front
+$(APP)/Contents/MacOS/loft: $(OBJ)/target-arch $(SWIFT_SRC) $(C_OBJ) $(MACOS)/loft-priv $(MACOS)/loft-front
 	mkdir -p $(MACOS) $(RES) $(FW)
 	$(SWIFTC) -swift-version 5 -target $(TRIPLE) -sdk $(SDK) -O \
 		-import-objc-header Sources/Bridging-Header.h \
@@ -97,6 +126,10 @@ $(APP)/Contents/MacOS/loft: $(SWIFT_SRC) $(C_OBJ) $(MACOS)/loft-priv $(MACOS)/lo
 	xcrun swift-stdlib-tool --copy --scan-executable $(MACOS)/loft \
 	  --destination $(FW) --platform macosx --unsigned-destination $(FW)
 	rm -rf $(FW)/macosx
+	@for b in loft loft-front loft-priv; do \
+		got=`lipo -archs $(MACOS)/$$b 2>/dev/null || true`; \
+		echo "$$got" | grep -qw $(ARCH) || { echo "arch: $$b is '$$got', want $(ARCH)" >&2; exit 1; }; \
+	done
 	# Nested sign happens in `app` via pack/sign.sh (identity or ad-hoc).
 
 run: $(APP)/Contents/MacOS/loft
@@ -111,4 +144,4 @@ front-probe: $(APP)/Contents/MacOS/loft
 	$(MACOS)/loft --probe
 
 clean:
-	rm -rf $(OBJ) $(APP)
+	rm -rf build $(APP)

@@ -78,8 +78,15 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
-      - name: macOS DMG (ad-hoc, no VERSION bump)
-        run: make macos-dmg BUMP=0
+      - name: macOS DMGs arm64 + x86_64 (ad-hoc, no VERSION bump)
+        run: make macos-dmgs BUMP=0
+      - name: Smoke DMGs
+        run: |
+          set -eu
+          ver=$(tr -d ' \n' < clients/macOS/VERSION)
+          test -f "dist/clients/macOS/loft-${ver}-macos-arm64.dmg"
+          test -f "dist/clients/macOS/loft-${ver}-macos-x86_64.dmg"
+          ls -l dist/clients/macOS/*.dmg
       - name: Drop scratch images
         run: rm -f dist/clients/macOS/*.rw.dmg
       - uses: actions/upload-artifact@v4

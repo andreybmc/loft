@@ -19,6 +19,7 @@ make client    # dist/clients/go/loft
 make probe     # dist/clients/go/loft-probe
 make macos     # dist/clients/macOS/loft.app
 make macos-dmg # dist/clients/macOS/loft-*-macos-<arch>.dmg  (симлинк Applications)
+make macos-dmgs # оба DMG, arm64 и x86_64 (CI)
 make dist      # tarball/.deb ноды + архивы CLI
 ```
 
@@ -340,8 +341,8 @@ Push и pull request в `main` запускают `make test`.
 
 - tarball и `.deb` ноды (linux amd64, arm64)
 - архивы CLI (`loft`, `loft-front`, `loft-probe`, `loft-bench` для linux/darwin, amd64/arm64)
-- macOS DMG, ad-hoc подпись, имя `loft-*-macos-<arch>.dmg` (`BUMP=0`, CI не переписывает `clients/macOS/VERSION`)
+- macOS DMG, ad-hoc подпись: `loft-*-macos-arm64.dmg` и `loft-*-macos-x86_64.dmg` (`BUMP=0`, CI не переписывает `clients/macOS/VERSION`). Раннер — Apple Silicon; Intel — кросс-сборка Swift/Go (`ARCH=x86_64`).
 
-и публикует GitHub Release. Повторный прогон на том же теге заменяет файлы. Без тега Actions → Dist → Run workflow только кладёт артефакты. Раннер macOS — arm64; Intel DMG: `make macos-dmg BUMP=0` на x86_64 Mac.
+и публикует GitHub Release. Повторный прогон на том же теге заменяет файлы. Без тега Actions → Dist → Run workflow только кладёт артефакты.
 
 Локальные пакеты: `make dist`. Локальный DMG без повышения маркетинговой версии macOS: `make macos-dmg BUMP=0`. Developer ID и нотаризация остаются на Маке со связкой; в Actions их нет.

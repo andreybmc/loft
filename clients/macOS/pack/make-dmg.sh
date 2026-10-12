@@ -9,7 +9,14 @@ ROOT=$(cd "$MACOS/../.." && pwd)
 APP="$ROOT/dist/clients/macOS/loft.app"
 OUTDIR="$ROOT/dist/clients/macOS"
 VER=$(tr -d ' \n' < "$MACOS/VERSION")
-ARCH=$(uname -m)
+ARCH=${ARCH:-$(uname -m)}
+case "$ARCH" in
+arm64|x86_64) ;;
+*)
+	echo "dmg: ARCH must be arm64 or x86_64 (got $ARCH)" >&2
+	exit 1
+	;;
+esac
 VOL=loft
 DMG="$OUTDIR/loft-${VER}-macos-${ARCH}.dmg"
 RW="$OUTDIR/loft-${VER}-macos-${ARCH}.rw.dmg"

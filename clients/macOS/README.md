@@ -8,6 +8,9 @@ Menu-bar agent. Minimum OS: **macOS 10.13**. UX: [`design/DESIGN.md`](design/DES
 make app          # ../../dist/clients/macOS/loft.app  (version patch +1)
 make dmg          # ../../dist/clients/macOS/loft-*-macos-<arch>.dmg
 make dmg BUMP=0   # same DMG, leave VERSION as-is (CI)
+make dmg ARCH=x86_64 BUMP=0   # Intel slice (cross from Apple Silicon)
+make dmg ARCH=arm64 BUMP=0    # Apple Silicon slice (cross from Intel)
+make dmgs         # both DMGs; first may bump VERSION, second keeps it
 make run
 make test-crypto  # RFC 8439 vector → build/test_aead
 make shot         # window PNGs → /tmp/loft-shots
@@ -38,7 +41,7 @@ CODESIGN_IDENTITY=auto NOTARY_PROFILE=loft make dmg
 
 `build/` is compiler scratch (`.o`, `test_aead`). The app is not there. The AEAD test source is [`tests/test_aead.c`](tests/test_aead.c). `--probe` and `--shot` stay on the app binary because they need AppKit.
 
-Each `make app` raises the patch in [`VERSION`](VERSION) (`0.1.0` → `0.1.1` → `0.1.2`) and stamps `Info.plist`. About reads that string. Protocol software stays the repo-root `VERSION`. `BUMP=0` stamps the current file and does not write it. The DMG name includes `uname -m` (`arm64` / `x86_64`).
+Each `make app` raises the patch in [`VERSION`](VERSION) (`0.1.0` → `0.1.1` → `0.1.2`) and stamps `Info.plist`. About reads that string. Protocol software stays the repo-root `VERSION`. `BUMP=0` stamps the current file and does not write it. The DMG name includes `ARCH` (`arm64` / `x86_64`), default `uname -m`. CI (`make macos-dmgs BUMP=0`) builds both on the Apple Silicon runner: native arm64 and `ARCH=x86_64` cross.
 
 The UI binary is Swift 5 + AppKit (Go 1.20 was the last toolchain that could target 10.13). Swift stdlib is copied into `Contents/Frameworks`. The overlay session is **`loft-front`** (Go) in `Contents/MacOS/` next to `loft`. That helper speaks GET, WS, H2, QUIC and H3, mux, clockless auth, mask, CmdLeave, overlay ICMP as Dgram `:1`. Hello caps come from the Go client, not from `GETFront.swift`.
 
