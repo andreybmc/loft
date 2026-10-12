@@ -1,0 +1,120 @@
+name: Dist
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+concurrency:
+  group: dist-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Test
+        run: make test
+      - name: Match tag to VERSION
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          tag=${GITHUB_REF_NAME#v}
+          ver=$(tr -d ' \n' < VERSION)
+          if [ "$tag" != "$ver" ]; then
+            echo "tag $GITHUB_REF_NAME does not match VERSION $ver" >&2
+            exit 1
+          fi
+
+  linux:
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Node packages and CLI archives
+        run: make dist-node dist-clients
+      - name: Unique checksum names
+        run: |
+          ver=$(tr -d ' \n' < VERSION)
+          cp dist/node/SHA256SUMS "dist/node/loft-node-${ver}-SHA256SUMS.txt"
+          cp dist/clients/go/SHA256SUMS "dist/clients/go/loft-clients-${ver}-SHA256SUMS.txt"
+      - name: Smoke archives
+        run: |
+          set -eu
+          find dist/node dist/clients/go -name '*.tar.gz' | sort | while IFS= read -r f; do
+            tar -tzf "$f" >/dev/null
+            echo "$f"
+          done
+          find dist/node -name '*.deb' | sort
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux
+          if-no-files-found: error
+          retention-days: 14
+          path: |
+            dist/node/**/*.tar.gz
+            dist/node/**/*.deb
+            dist/node/loft-node-*-SHA256SUMS.txt
+            dist/clients/go/*.tar.gz
+            dist/clients/go/loft-clients-*-SHA256SUMS.txt
+
+  macos:
+    needs: test
+    runs-on: macos-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: macOS DMG (ad-hoc, no VERSION bump)
+        run: make macos-dmg BUMP=0
+      - name: Drop scratch images
+        run: rm -f dist/clients/macOS/*.rw.dmg
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos
+          if-no-files-found: error
+          retention-days: 14
+          path: dist/clients/macOS/*.dmg
+
+  release:
+    needs: [linux, macos]
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - name: Publish GitHub Release
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -eu
+          mapfile -t files < <(find artifacts -type f \( \
+            -name '*.tar.gz' -o -name '*.deb' -o -name '*.dmg' -o -name '*SHA256SUMS.txt' \
+          \) | sort)
+          [ "${#files[@]}" -gt 0 ]
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" "${files[@]}" --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --generate-notes "${files[@]}"
+          fi

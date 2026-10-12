@@ -1,0 +1,19 @@
+# loft-node -c server/configs/relay.yaml
+role: relay
+id: ru1
+listen: ":443"
+advertise: https://203.0.113.10
+controller: wss://10.0.0.2/api/v1/sync
+token: "change-me-long-random"
+cert: /etc/loft/fullchain.pem
+key: /etc/loft/privkey.pem
+
+# this front's identity; the controller's roster lists the same decoy
+decoy:
+  - www.gosuslugi.ru:443
+mask: true
+
+fronts:
+  - get
+  - ws
+  - h2
